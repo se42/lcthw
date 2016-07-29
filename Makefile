@@ -1,29 +1,11 @@
-all: ex1 ex3 ex4 ex5 ex6 ex7
+CFLAGS = -Wall -g
 
-# Need to learn how to define bin/ location without explicitly defining every target
-ex1:
-	cc ex1.c -o bin/ex1
+all: ex1 ex3 ex4 ex5 ex6 ex7 ex8 ex9
 
-ex3:
-	cc ex3.c -o bin/ex3
-
-ex4:
-	cc ex4.c -o bin/ex4
-
-ex5:
-	cc ex5.c -o bin/ex5
-
-ex6:
-	cc ex6.c -o bin/ex6
-
-ex7:
-	cc ex7.c -o bin/ex7
-
-###
-
-
-CFLAGS:-Wall -g
+# send all target executables to bin/ directory
+ex%:
+	cc $(CFLAGS) $@.c -o bin/$@
 
 clean:
-	-rm -r bin/*.dSYM # Remove *.dSYM/ directories created by valgrind
+	-rm -r bin/*.dSYM
 	-rm bin/*
