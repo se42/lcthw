@@ -1,2 +1,2 @@
 # lcthw
-Files Created Following "Learn C the Hard Way"
+Files Created Following [Learn C the Hard Way](http://c.learncodethehardway.org/book/)
