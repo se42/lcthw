@@ -1,3 +1,14 @@
+/*
+Basic database application demonstrating stack and heap memory.
+Also proved to be a challenging exercise in pointers and slightly
+more advanced structs, as well as an introduction to FILE objects.
+Cool to see how data is read from permanent storage into RAM
+when you run a program.
+
+Code is more or less straight from the exercise.  Comments are my
+study notes as I try to understand the concepts at work here.
+*/
+
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -16,11 +27,39 @@ struct Address {
 
 struct Database {
     struct Address rows[MAX_ROWS];
+    /*
+    This is still a fixed-size struct, but this one has a compound structure.
+    I figure we don't use a pointer here because we're still building up this
+    compound data struct.  I guess you could have an array of pointers to the
+    various Address structs, but those pointers would use more memory than just
+    putting all of the Address structs together as is done here.
+
+    Basically how I imagine this is [[id|set|name|email]|[id|set|name|email]|...]
+    where the internal [id|set|name|email] are the Address sub-structs and
+    the whole block of memory is the Database super-struct.
+    The nested structs just let you build this block by block.
+    */
 };
 
 struct Connection {
-    FILE *file; // TODO - look this up and comment
-    struct Database *db; // TODO - is this just because the Database itself is pretty big?
+    FILE *file;
+    struct Database *db;
+    /*
+    Why pointer to db?
+    I figure this is because the Database struct isn't "part of" the Connection
+    struct the way Address structs are "part of" Database structs.  The
+    Database struct already exists in heap memory, and the Connection just
+    needs to know where it is.  Hence the db pointer.
+
+    FILE notes
+
+    from Wikipedia: This is an opaque type containing the information about
+    a file or text stream needed to perform input or output operations on it.
+
+    Also interesting to learn that stdin/stdout/stderr are pointers to FILE handles
+    reprsenting the standard input/output/error streams and that the stdin FILE
+    pointer is your keyboard.
+    */
 };
 
 void die(const char *message) // TODO - look up const and comment
@@ -47,10 +86,10 @@ void Database_load(struct Connection *conn)
 
 struct Connection *Database_open(const char *filename, char mode)
 {
-    struct Connection *conn = malloc(sizeof(struct Connection));
+    struct Connection *conn = malloc(sizeof(struct Connection)); // assigning heap memory for the conn struct
     if(!conn) die("Memory error");
 
-    conn->db = malloc(sizeof(struct Database));
+    conn->db = malloc(sizeof(struct Database)); // assigning heap memory for the db struct
     if(!conn->db) die("Memory error");
 
     if(mode == 'c'){
@@ -81,11 +120,11 @@ void Database_write(struct Connection *conn)
 {
     rewind(conn->file); // TODO - look up and comment this
 
-    int rc = fwrite(conn->db, sizeof(struct Database), 1 conn->file); // TODO - look up and comment
+    int rc = fwrite(conn->db, sizeof(struct Database), 1, conn->file); // TODO - look up and comment
     if(rc != 1) die("Failed to write database");
 
     rc = fflush(conn->file); // TODO - look up and comment
-    if(rc != -1) die("Failed to flush database");
+    if(rc == -1) die("Cannot flush database");
 }
 
 void Database_create(struct Connection *conn)
@@ -100,12 +139,12 @@ void Database_create(struct Connection *conn)
     }
 }
 
-void Database_set(struct Connection *conn, int id, const char *name, cons char *email)
+void Database_set(struct Connection *conn, int id, const char *name, const char *email)
 {
-    struct Address *addr = &conn->db->rows[id]; // TODO - think through this and comment
+    struct Address *addr = &conn->db->rows[id]; // setting the value of the pointer (an address)
     if(addr->set) die("Already set, delete it first"); // TODO - why?
 
-    addr->set = 1;
+    addr->set = 1; // you know the addr is an Address struct, so ->set references a distance down the memory line for this value
     // WARNING: bug, read "How to break it" and fix this - then clearly comment on the concepts
     char *res = strncpy(addr->name, name, MAX_DATA);
     // demonstrate the strncopy bug
@@ -128,7 +167,7 @@ void Database_get(struct Connection *conn, int id)
 
 void Database_delete(struct Connection *conn, int id)
 {
-    struct Address addr = {.id = id, .set = 0};
+    struct Address addr = {.id = id, .set = 0}; // TODO - study this 'local prototype' concept
     conn->db->rows[id] = addr;
 }
 
@@ -158,6 +197,7 @@ int main(int argc, char *argv[])
     if(argc > 3) id = atoi(argv[3]); // TODO - look this up and comment
     if(id >= MAX_ROWS) die("There aren't that many records");
 
+    // note this isn't the best way to process complex arguments
     switch(action) {
         case 'c':
             Database_create(conn);
@@ -173,6 +213,8 @@ int main(int argc, char *argv[])
 
             Database_set(conn, id, argv[4], argv[5]);
             Database_write(conn); // TODO - why db_set then db_write?  think through and comment
+            // Database_set updates the corresponding RAM location with the new data
+            // Database_write is actually interacting with the permanent file itself
             break;
         case 'd':
             if(argc != 4) die("Need id to delete");
