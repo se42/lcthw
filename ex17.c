@@ -207,21 +207,32 @@ void Database_write(struct Connection *conn)
         die("Failed to write database");
     }
 
-    rc = fflush(conn->file); // TODO - look up and comment
+    rc = fflush(conn->file);
     if(rc == -1){
         die("Cannot flush database");
     }
 
     /*
-    rewind() sets the file position indicator for the stream pointed to by conn->file
-    to the beginning of the file.  I'm guessing this is necessary because some file
-    positioning attribute within the FILE object has to be reset as this file was
-    potentially read in a Database_load operation.
+    rewind() sets the file position indicator for the stream pointed to by
+    conn->file to the beginning of the file.  I'm guessing this is necessary
+    because some file positioning attribute within the FILE object has to be
+    reset as this file was potentially read in a Database_load operation.
 
-    fwrite(conn->db, db_size, 1, conn->file) writes 1 object of size db_size to the
-    stream pointed to by conn->file, obtaining the data from the location given by conn->db.
+    fwrite(conn->db, db_size, 1, conn->file) writes 1 object of size db_size
+    to the stream pointed to by conn->file, obtaining the data from the
+    location given by conn->db.
 
-    fwrite() returns the number of objects written, so in this case an rc == 1 indicates success.
+    fwrite() returns the number of objects written, so in this case an
+    rc == 1 indicates success.
+
+    From what I can tell, it seems like fwrite() is only sending data to the
+    stream, so it will be buffered/actually written per the FILE object.
+    So to be sure all of the data went all the way through to the file
+    itself...
+
+    fflush(ptr_to_stream) forces a write of all buffered data for the given
+    output or update stream via the stream's underlying write function.
+    rc == 0 if successful, otherwise rc == -1 and errno is set.
     */
 }
 
@@ -230,32 +241,90 @@ void Database_create(struct Connection *conn)
     int i = 0;
 
     for(i = 0; i < MAX_ROWS; i++) {
-        // make a prototype to initialize it
-        struct Address addr = {.id = i, .set = 0}; // TODO - look up what is going on here and comment
-        // then just assign it
-        conn->db->rows[i] = addr; // db is an array of 'rows' that are address structs
+        // make a prototype to initialize it and then just assign it
+        struct Address addr = {.id = i, .set = 0};
+        conn->db->rows[i] = addr;
     }
+
+    /*
+    This function is called when the program is run with the 'c/create'
+    action.  For each row in the database up to the MAX_ROWS limit,
+    an Address struct is created with id=i and ensuring set=0, and
+    is then assigned to conn->db->rows[i].
+
+    In this case we have an empty block of memory that was malloc'd
+    in Database_open, which assigned a pointer to the db variable that
+    is typed as a Database struct.  That variable typing is why we can
+    do the db->rows[i] syntax here which will put these addr prototypes
+    in the right place.
+
+    Since the Database struct is just an array of Address "sub"-structs,
+    we can iterate over this array and set each addr with the initial
+    values that we want to use to represent an empty database.
+
+    The 'struct Address addr = {}' syntax initializes an Address struct
+    in place with the given values, which can be given either in positional
+    order or by using .attr=value syntax.  We then use conn->db->rows[i]
+    pointer syntax to assign the values of this prototype addr to the
+    memory at the pointed-to location.
+    */
 }
 
 void Database_set(struct Connection *conn, int id, const char *name, const char *email)
 {
-    struct Address *addr = &conn->db->rows[id]; // setting the value of the pointer (an address)
+    struct Address *addr = &conn->db->rows[id];
     if(addr->set){
-        die("Already set, delete it first"); // TODO - why?
+        die("Already set, delete it first");
     }
 
-    addr->set = 1; // you know the addr is an Address struct, so ->set references a distance down the memory line for this value
-    // WARNING: bug, read "How to break it" and fix this - then clearly comment on the concepts
-    char *res = strncpy(addr->name, name, MAX_DATA);
-    // demonstrate the strncopy bug
+    addr->set = 1;
+
+    char *res = strncpy(addr->name, name, MAX_DATA - 1);
+    addr->name[MAX_DATA - 1] = '\0';
     if(!res){
         die("Name copy failed");
     }
 
-    res = strncpy(addr->email, email, MAX_DATA);
+    res = strncpy(addr->email, email, MAX_DATA - 1);
+    addr->email[MAX_DATA - 1] = '\0';
     if(!res){
         die("Email copy failed");
     }
+
+    /*
+    This function attempts to update the RAM version of the database when
+    the program is called with the s action, but implements a warning if
+    the file already contains a set record at the given id.
+
+    The function first creates a struct Address variable called addr and
+    assigns to it the address (via &) of the memory block that represents
+    the Address record of the given id.  We use the & operator here because
+    conn->db->rows[id] would return the actual data from this location.
+    At this point we just want to know where the data is so we can work
+    with it later, so getting a pointer makes sense.
+
+    The first operation is to check the addr->set value.  If the value
+    is anything but 0, the program raises a warning to first delete the entry.
+    This is just a mock warning that Zed built into the program...this is
+    not somethineg that necessarily has to be done.
+
+    If the value of addr->set is currently 0, then we pass the 'already set'
+    die test and then set the value of addr->set to 1 (remember this is
+    the RAM representation of the database that we're working with here).
+    The next step is to populate the name and email fields of the Address.
+
+    strncpy() blindly reads characters up to the size given, so if there
+    are more characters in the given string than the size given to strncpy(),
+    the resulting copied string will not be terminated.  To fix this, we use
+    'MAX_DATA - 1' as the size and force the last character of addr->name
+    and addr->email to be set to the null terminator.  Without this, if
+    the name is too long the program will continue reading characters into
+    the memory representing email anytime name is requested.  Email gets off
+    easy in this case as the next block of memory is the int representing id,
+    and in our case the first byte of this int block will always be 0.
+    However, if this bug made it into a large database, we would start to see
+    some odd behavior vis-a-vis the email string at id ~16777216 (2^24).
+    */
 }
 
 void Database_get(struct Connection *conn, int id)
@@ -267,15 +336,34 @@ void Database_get(struct Connection *conn, int id)
     } else {
         die("ID is not set");
     }
+
+    /*
+    As in Database_set, we first look up the address of the relevant id
+    and save this address as opposed to the actual data, in this case
+    because the Address_print function we plan to use takes a pointer
+    to an Address struct as its only parameter.
+
+    The addr->set check prevents the program from returning empty records,
+    which may or may not be desired behavior.
+    */
 }
 
 void Database_delete(struct Connection *conn, int id)
 {
-    struct Address addr = {.id = id, .set = 0}; // TODO - study this 'local prototype' concept
+    struct Address addr = {.id = id, .set = 0};
     conn->db->rows[id] = addr;
+
+    /*
+    This function is the first step in a 1-2 move to delete a row from
+    the database when the program is run with the 'd' action.  This step
+    updates the corresponding 'row' entry in the RAM db by assigning an
+    empty prototype to the location corresponding to the given id.  The
+    next step, handled by the Database_write function, is to push these
+    RAM changes to the db file.
+    */
 }
 
-void Database_list(struct Connection *conn) // TODO - think through and comment this whole function
+void Database_list(struct Connection *conn)
 {
     int i = 0;
     struct Database *db = conn->db;
@@ -287,6 +375,23 @@ void Database_list(struct Connection *conn) // TODO - think through and comment 
             Address_print(cur);
         }
     }
+
+    /*
+    This function lists all populated/'set' rows in the RAM db.  Following,
+    a similar pattern, we first create a variable for a pointer to the
+    RAM object we want to work with.  We then loop over this object (which,
+    because of its struct Database type, has indices correponding to
+    'rows', which are of the struct Address type.)  For each row in the
+    object pointed to by db, up to the MAX_ROWS, we create a pointer
+    to this location (as opposed to creating a variable for the actual
+    data).  Then, because we've typed this pointer as struct Address, we
+    can test the value of cur->set.  If it's anything but 0 (in our case 1),
+    then we execute the Address_print function, which takes a pointer of
+    the struct Address type as its only parameter.
+
+    Similar to the Database_get function, the if(cur->set) condition may
+    or may not be the desired behavior.
+    */
 }
 
 int main(int argc, char *argv[])
