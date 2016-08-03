@@ -12,7 +12,6 @@ documentation.
 */
 
 #include <stdio.h>
-#include <assert.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
@@ -406,7 +405,7 @@ int main(int argc, char *argv[])
     int id = 0;
 
     if(argc > 3){
-        id = atoi(argv[3]); // TODO - look this up and comment
+        id = atoi(argv[3]);
     }
     if(id >= MAX_ROWS){
         die("There aren't that many records");
@@ -431,9 +430,7 @@ int main(int argc, char *argv[])
             }
 
             Database_set(conn, id, argv[4], argv[5]);
-            Database_write(conn); // TODO - why db_set then db_write?  think through and comment
-            // Database_set updates the corresponding RAM location with the new data
-            // Database_write is actually interacting with the permanent file itself
+            Database_write(conn);
             break;
         case 'd':
             if(argc != 4){
@@ -441,7 +438,7 @@ int main(int argc, char *argv[])
             }
 
             Database_delete(conn, id);
-            Database_write(conn); // TODO - again, why delete then write?
+            Database_write(conn);
             break;
         case 'l':
             Database_list(conn);
@@ -450,8 +447,52 @@ int main(int argc, char *argv[])
             die("Invalid action, only: c=create, g=get, s=set, d=del, l=list");
     }
 
-    Database_close(conn); // TODO - why?  think through and comment
+    Database_close(conn);
 
     return 0;
+
+    /*
+    main() function defines the overall flow of the database program.  The general
+    idea is that the program will take a file and action paramater that will
+    determine what it does to which file.  Depending on the action, a row id
+    and data to enter may be required.
+
+    The function first ensures that the minimum number of arguments have been
+    given.  If not, the program is killed.
+
+    With the minimum number of arguments present, the function first attempts to
+    open a database connection by running the Database_open function, which will
+    return a pointer to a struct Connection stored in the variable conn.  Note
+    that at this point the action could be invalid, but the connection will
+    still be opened in 'r+' mode.  Database_open is tasked with establishing
+    a stream to the designated file (conn->file) and malloc'ing appropriate
+    heap memory blocks for the conn object and the RAM representation of the
+    db file.
+
+    It is assumed that argv[3], if present, will always represent the id of a
+    row to be operated on.  If there are more than 3 args, then argv[3] is
+    converted from its ASCII string representation to an int and stored in the
+    id variable.  If the id is >= the number of rows in the database (indexing
+    starts at 0), the the program is killed.
+
+    Zed notes that a switch-case is not the best way to handle arguments.  Not
+    sure why he did it this way, but it's what he did.
+
+    For every case, the general pattern here is to first interact with the RAM
+    representation of the database, and then push the changes (if any) to the
+    database file using Database_write.  Anything representing a get-type
+    operation (g/get or l/list) will only interact with the RAM database.  Any
+    option requiring write operations will first update the RAM representation
+    and then use a common Database_write function to push those changes to the file.
+
+    If a bad action is given, the program is killed via die() as the default case.
+
+    Finally, Database_close executes cleanup operations by ensuring the file
+    stream is properly closed, then freeing the heap memory malloc'd for the
+    RAM db, then freeing the heap memory malloc'd for the conn struct.
+
+    If all of this executes without triggering a die() call, then the program
+    exits with status code 0 indicating success.
+    */
 }
 
