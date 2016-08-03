@@ -493,6 +493,10 @@ int main(int argc, char *argv[])
 
     If all of this executes without triggering a die() call, then the program
     exits with status code 0 indicating success.
+
+    Also note that Database_open is designed to do all of the requisite malloc'ing
+    for the program, and that Database_close is designed to safely clean up
+    all of the malloc'd memory and the open files from Database_open.
     */
 }
 
